@@ -110,6 +110,10 @@ html[data-theme="light"] .milsys button[aria-pressed="true"]{color:#fff}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px 12px}
 .field{display:flex;flex-direction:column;gap:5px}
 .field.full{grid-column:1/-1}
+.igrid{display:grid;grid-template-columns:1fr 1fr;gap:11px 12px}
+.ebox{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green);background:var(--field);
+  border:1px solid var(--green);border-radius:10px;padding:11px 12px;min-height:44px;display:flex;align-items:center;
+  box-shadow:var(--glow)}
 .field label{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--ink);
   display:flex;align-items:baseline;gap:6px}
 .field label .hint{font-family:var(--body);font-weight:400;font-size:10px;color:var(--muted);letter-spacing:0}
@@ -344,35 +348,66 @@ const MODULES={
               {head:"Observed angles",fields:[["A1","α  (A–B)",G_HINT()],["A2","β  (A–C)",G_HINT()]]}],
     run(v){const r=calcRelev(v);return{readouts:[["Xs",fmt(r.Xs),""],["Ys",fmt(r.Ys),""]],
       viz:plot([{name:"A",x:num(v.Ax),y:num(v.Ay),kind:"ref"},{name:"B",x:num(v.Bx),y:num(v.By),kind:"ref"},{name:"C",x:num(v.Cx),y:num(v.Cy),kind:"ref"},{name:"S",x:r.Xs,y:r.Ys,kind:"result"}])};}},
-  interp:{title:"Interpolation",desc:"Linear interpolation: find E3 at distance D3 between two known points (D1, E1) and (D2, E2).",
-    sections:[{head:"First point",fields:[["D1","D1","distance"],["E1","E1","elevation"]]},
-              {head:"Second point",fields:[["D2","D2","distance"],["E2","E2","elevation"]]},
-              {head:"Target",fields:[["D3","D3","distance to find E for",1]]}],
-    run(v){const r=calcInterp(v);return{readouts:[["E3 (interpolated)",fmt(r.E3),""]],
-      viz:interpGraph(r)};}}
+  interp:{title:"Interpolation",desc:"Linear interpolation: find E3 at distance D3, with D3 between D1 and D2.",
+    custom:true,
+    form:`<div class="igrid">
+      <div class="field"><label>D1</label><input inputmode="decimal" autocomplete="off" data-k="D1" placeholder="0.00"></div>
+      <div class="field"><label>E1</label><input inputmode="decimal" autocomplete="off" data-k="E1" placeholder="0.00"></div>
+      <div class="field"><label>D3</label><input inputmode="decimal" autocomplete="off" data-k="D3" placeholder="0.00"></div>
+      <div class="field"><label>Result · E3</label><div class="ebox" id="e3out">—</div></div>
+      <div class="field"><label>D2</label><input inputmode="decimal" autocomplete="off" data-k="D2" placeholder="0.00"></div>
+      <div class="field"><label>E2</label><input inputmode="decimal" autocomplete="off" data-k="E2" placeholder="0.00"></div>
+    </div>`,
+    run(v){const r=calcInterp(v);
+      const lo=Math.min(r.D1,r.D2),hi=Math.max(r.D1,r.D2);
+      if(r.D3<lo||r.D3>hi) throw new Error("range");
+      return {e3:r.E3,viz:interpGraph(r)};}}
 };
 
 /* ---- render ---- */
 const mount=document.getElementById("mount");
 function renderModule(){
-  const m=MODULES[App.mod];let body="";
-  m.sections.forEach(sec=>{body+=`<div class="subhead">${sec.head}</div>`;
-    sec.fields.forEach(f=>{const[k,lab,hint,full]=f;
-      body+=`<div class="field${full?" full":""}"><label>${lab}${hint?` <span class="hint">${hint}</span>`:""}</label><input inputmode="decimal" autocomplete="off" data-k="${k}" placeholder="0.00"></div>`;});});
-  mount.innerHTML=`<div class="card"><h2>${m.title}</h2><p class="desc">${m.desc}</p>
-    <div class="grid2">${body}</div><button class="go" id="goBtn">Calculate</button>
-    <div class="err" id="err"></div><div class="result" id="res"></div></div>`;
+  const m=MODULES[App.mod];
+  let inner;
+  if(m.custom){
+    inner=`<div class="card"><h2>${m.title}</h2><p class="desc">${m.desc}</p>${m.form}
+      <button class="go" id="goBtn">Calculate</button>
+      <div class="err" id="err"></div><div class="result" id="res"></div></div>`;
+  } else {
+    let body="";
+    m.sections.forEach(sec=>{body+=`<div class="subhead">${sec.head}</div>`;
+      sec.fields.forEach(f=>{const[k,lab,hint,full]=f;
+        body+=`<div class="field${full?" full":""}"><label>${lab}${hint?` <span class="hint">${hint}</span>`:""}</label><input inputmode="decimal" autocomplete="off" data-k="${k}" placeholder="0.00"></div>`;});});
+    inner=`<div class="card"><h2>${m.title}</h2><p class="desc">${m.desc}</p>
+      <div class="grid2">${body}</div><button class="go" id="goBtn">Calculate</button>
+      <div class="err" id="err"></div><div class="result" id="res"></div></div>`;
+  }
+  mount.innerHTML=inner;
   document.getElementById("goBtn").addEventListener("click",doCalc);
   mount.querySelectorAll("input").forEach(i=>i.addEventListener("keydown",e=>{if(e.key==="Enter")doCalc();}));
 }
 function readForm(){const v={};mount.querySelectorAll("input").forEach(i=>v[i.dataset.k]=i.value.trim());return v;}
 function doCalc(){
+  const m=MODULES[App.mod];
   const err=document.getElementById("err"),res=document.getElementById("res");
   err.classList.remove("show");res.classList.remove("show");
-  let out;try{out=MODULES[App.mod].run(readForm());}
-  catch(e){err.textContent=e.message==="parallel"?"The two bearings are parallel — no intersection. Check Ga and Gb.":e.message==="samed"?"D1 and D2 must be different distances.":"Enter valid numbers in every field.";err.classList.add("show");return;}
-  const ro=out.readouts.map(r=>`<div class="ro"><div class="k">${r[0]}</div><div class="v">${r[1]}${r[2]?` <span class="u">${r[2]}</span>`:""}</div></div>`).join("");
-  res.innerHTML=`<div class="viz">${out.viz}</div><div class="readout">${ro}</div>`;
+  let out;try{out=m.run(readForm());}
+  catch(e){
+    err.textContent=e.message==="parallel"?"The two bearings are parallel — no intersection. Check Ga and Gb."
+      :e.message==="samed"?"D1 and D2 must be different distances."
+      :e.message==="range"?"D3 must be between D1 and D2."
+      :"Enter valid numbers in every field.";
+    err.classList.add("show");
+    const eo=document.getElementById("e3out");if(eo)eo.textContent="—";
+    return;
+  }
+  if(m.custom){
+    document.getElementById("e3out").textContent=fmt(out.e3);
+    res.innerHTML=out.viz?`<div class="viz">${out.viz}</div>`:"";
+  } else {
+    const ro=out.readouts.map(r=>`<div class="ro"><div class="k">${r[0]}</div><div class="v">${r[1]}${r[2]?` <span class="u">${r[2]}</span>`:""}</div></div>`).join("");
+    res.innerHTML=`<div class="viz">${out.viz}</div><div class="readout">${ro}</div>`;
+  }
   res.classList.add("show");res.scrollIntoView({behavior:"smooth",block:"nearest"});
 }
 
