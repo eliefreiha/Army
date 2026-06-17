@@ -94,6 +94,7 @@ html[data-theme="light"] .milsys button[aria-pressed="true"]{color:#fff}
   color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);position:relative;overflow:hidden}
 .tab .ar{font-family:var(--body);font-weight:400;font-size:10.5px;letter-spacing:0;color:var(--muted);direction:rtl}
+.tab.wide{grid-column:1/-1;flex-direction:row;align-items:center;justify-content:space-between}
 .tab[aria-selected="true"]{border-color:var(--amber);color:var(--amber)}
 .tab[aria-selected="true"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--amber)}
 .tab[aria-selected="true"] .ar{color:var(--amberd)}
@@ -108,6 +109,7 @@ html[data-theme="light"] .milsys button[aria-pressed="true"]{color:#fff}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px 12px}
 .field{display:flex;flex-direction:column;gap:5px}
+.field.full{grid-column:1/-1}
 .field label{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--ink);
   display:flex;align-items:baseline;gap:6px}
 .field label .hint{font-family:var(--body);font-weight:400;font-size:10px;color:var(--muted);letter-spacing:0}
@@ -178,6 +180,8 @@ footer .ar{color:var(--green)}
       <span class="lbl">Intersection</span><span class="ar">التقاطع</span></button>
     <button class="tab" role="tab" data-mod="relev" aria-selected="false">
       <span class="lbl">Relèvement</span><span class="ar">الرصد العكسي</span></button>
+    <button class="tab wide" role="tab" data-mod="interp" aria-selected="false">
+      <span class="lbl">Interpolation</span><span class="ar">الاستيفاء</span></button>
   </div>
 
   <div id="mount"></div>
@@ -230,6 +234,12 @@ function calcRelev(v){
   const Xs=((Ys-Ax)*k1)+Ay;
   return {Xs,Ys};
 }
+function calcInterp(v){
+  const D1=num(v.D1),E1=num(v.E1),D2=num(v.D2),E2=num(v.E2),D3=num(v.D3);
+  if(D2-D1===0) throw new Error("samed");
+  const E3=E1+((D3-D1)/(D2-D1))*(E2-E1);
+  return {E3,D1,E1,D2,E2,D3};
+}
 
 /* ---- visualizations (modern HUD) ---- */
 function dial(gis){
@@ -255,6 +265,30 @@ function dial(gis){
     <text x="${c}" y="${c-R+3}" font-size="9" font-family="var(--mono)" fill="var(--green)" text-anchor="middle" font-weight="700">N</text>
     <text x="${c}" y="${c+1}" font-size="16" font-family="var(--mono)" font-weight="700" fill="var(--ink)" text-anchor="middle">${Math.round(norm(gis))}</text>
     <text x="${c}" y="${c+13}" font-size="7" font-family="var(--mono)" fill="var(--muted)" text-anchor="middle" letter-spacing="1">MIL</text>
+  </svg>`;
+}
+function interpGraph(r){
+  const S=176,padL=30,padR=16,padT=16,padB=26;
+  const Ds=[r.D1,r.D2,r.D3],Es=[r.E1,r.E2,r.E3];
+  let minD=Math.min(...Ds),maxD=Math.max(...Ds),minE=Math.min(...Es),maxE=Math.max(...Es);
+  const padd=(a,b)=>{const s=(b-a)||1;return [a-s*0.12,b+s*0.12];};
+  [minD,maxD]=padd(minD,maxD);[minE,maxE]=padd(minE,maxE);
+  const X=d=>padL+((d-minD)/(maxD-minD))*(S-padL-padR);
+  const Y=e=>S-padB-((e-minE)/(maxE-minE))*(S-padT-padB);
+  let g="";
+  for(let i=0;i<=4;i++){const gx=padL+i*(S-padL-padR)/4,gy=padT+i*(S-padT-padB)/4;
+    g+=`<line x1="${gx.toFixed(1)}" y1="${padT}" x2="${gx.toFixed(1)}" y2="${S-padB}" stroke="var(--line)" stroke-width=".5" opacity=".5"/><line x1="${padL}" y1="${gy.toFixed(1)}" x2="${S-padR}" y2="${gy.toFixed(1)}" stroke="var(--line)" stroke-width=".5" opacity=".5"/>`;}
+  const x1=X(r.D1),y1=Y(r.E1),x2=X(r.D2),y2=Y(r.E2),x3=X(r.D3),y3=Y(r.E3);
+  const line=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--amber)" stroke-width="1.5" opacity=".9"/>`;
+  const drop=`<line x1="${x3.toFixed(1)}" y1="${y3.toFixed(1)}" x2="${x3.toFixed(1)}" y2="${S-padB}" stroke="var(--green)" stroke-width=".8" stroke-dasharray="3 3" opacity=".7"/><line x1="${x3.toFixed(1)}" y1="${y3.toFixed(1)}" x2="${padL}" y2="${y3.toFixed(1)}" stroke="var(--green)" stroke-width=".8" stroke-dasharray="3 3" opacity=".7"/>`;
+  const pts=`<circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="3.6" fill="var(--amber)"/><circle cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="3.6" fill="var(--amber)"/><circle cx="${x3.toFixed(1)}" cy="${y3.toFixed(1)}" r="4.6" fill="var(--green)" filter="url(#ig)"/>`;
+  return `<svg viewBox="0 0 ${S} ${S}" width="200" height="200" role="img" aria-label="interpolation graph">
+    <defs><filter id="ig" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${S-padB}" stroke="var(--amber)" stroke-width="1" opacity=".7"/>
+    <line x1="${padL}" y1="${S-padB}" x2="${S-padR}" y2="${S-padB}" stroke="var(--amber)" stroke-width="1" opacity=".7"/>
+    ${g}${line}${drop}${pts}
+    <text x="${S-padR}" y="${S-padB+15}" font-size="8" font-family="var(--mono)" fill="var(--muted)" text-anchor="end">D →</text>
+    <text x="${padL-4}" y="${padT+2}" font-size="8" font-family="var(--mono)" fill="var(--muted)" text-anchor="end">E↑</text>
   </svg>`;
 }
 function plot(points){
@@ -309,7 +343,13 @@ const MODULES={
               {head:"Point C",fields:[["Cx","Xc","Easting"],["Cy","Yc","Northing"]]},
               {head:"Observed angles",fields:[["A1","α  (A–B)",G_HINT()],["A2","β  (A–C)",G_HINT()]]}],
     run(v){const r=calcRelev(v);return{readouts:[["Xs",fmt(r.Xs),""],["Ys",fmt(r.Ys),""]],
-      viz:plot([{name:"A",x:num(v.Ax),y:num(v.Ay),kind:"ref"},{name:"B",x:num(v.Bx),y:num(v.By),kind:"ref"},{name:"C",x:num(v.Cx),y:num(v.Cy),kind:"ref"},{name:"S",x:r.Xs,y:r.Ys,kind:"result"}])};}}
+      viz:plot([{name:"A",x:num(v.Ax),y:num(v.Ay),kind:"ref"},{name:"B",x:num(v.Bx),y:num(v.By),kind:"ref"},{name:"C",x:num(v.Cx),y:num(v.Cy),kind:"ref"},{name:"S",x:r.Xs,y:r.Ys,kind:"result"}])};}},
+  interp:{title:"Interpolation",desc:"Linear interpolation: find E3 at distance D3 between two known points (D1, E1) and (D2, E2).",
+    sections:[{head:"First point",fields:[["D1","D1","distance"],["E1","E1","elevation"]]},
+              {head:"Second point",fields:[["D2","D2","distance"],["E2","E2","elevation"]]},
+              {head:"Target",fields:[["D3","D3","distance to find E for",1]]}],
+    run(v){const r=calcInterp(v);return{readouts:[["E3 (interpolated)",fmt(r.E3),""]],
+      viz:interpGraph(r)};}}
 };
 
 /* ---- render ---- */
@@ -317,8 +357,8 @@ const mount=document.getElementById("mount");
 function renderModule(){
   const m=MODULES[App.mod];let body="";
   m.sections.forEach(sec=>{body+=`<div class="subhead">${sec.head}</div>`;
-    sec.fields.forEach(f=>{const[k,lab,hint]=f;
-      body+=`<div class="field"><label>${lab}${hint?` <span class="hint">${hint}</span>`:""}</label><input inputmode="decimal" autocomplete="off" data-k="${k}" placeholder="0.00"></div>`;});});
+    sec.fields.forEach(f=>{const[k,lab,hint,full]=f;
+      body+=`<div class="field${full?" full":""}"><label>${lab}${hint?` <span class="hint">${hint}</span>`:""}</label><input inputmode="decimal" autocomplete="off" data-k="${k}" placeholder="0.00"></div>`;});});
   mount.innerHTML=`<div class="card"><h2>${m.title}</h2><p class="desc">${m.desc}</p>
     <div class="grid2">${body}</div><button class="go" id="goBtn">Calculate</button>
     <div class="err" id="err"></div><div class="result" id="res"></div></div>`;
@@ -330,7 +370,7 @@ function doCalc(){
   const err=document.getElementById("err"),res=document.getElementById("res");
   err.classList.remove("show");res.classList.remove("show");
   let out;try{out=MODULES[App.mod].run(readForm());}
-  catch(e){err.textContent=e.message==="parallel"?"The two bearings are parallel — no intersection. Check Ga and Gb.":"Enter valid numbers in every field.";err.classList.add("show");return;}
+  catch(e){err.textContent=e.message==="parallel"?"The two bearings are parallel — no intersection. Check Ga and Gb.":e.message==="samed"?"D1 and D2 must be different distances.":"Enter valid numbers in every field.";err.classList.add("show");return;}
   const ro=out.readouts.map(r=>`<div class="ro"><div class="k">${r[0]}</div><div class="v">${r[1]}${r[2]?` <span class="u">${r[2]}</span>`:""}</div></div>`).join("");
   res.innerHTML=`<div class="viz">${out.viz}</div><div class="readout">${ro}</div>`;
   res.classList.add("show");res.scrollIntoView({behavior:"smooth",block:"nearest"});
